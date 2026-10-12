@@ -1,0 +1,67 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: jetbee <7734987+jetbee@users.noreply.github.com>
+Date: Mon, 5 Oct 2026 02:57:38 +0000
+Subject: [PATCH 3/3] Drop x86-only flags for arm64 host modules, ship bison.real
+
+- cc/compiler.go: some generated Android.bp files (e.g. cronet) give every host module
+  x86 target-feature options (-msse3, -mavx2, ...) that clang rejects on an aarch64
+  host. Filter them for arm64 host modules.
+- android/rule_builder.go: bison is a wrapper script around bison.real; add the real
+  binary to the sandbox as an implicit tool.
+
+Assisted-by: LLM
+---
+ android/rule_builder.go |  4 ++++
+ cc/compiler.go          | 20 ++++++++++++++++++++
+ 2 files changed, 24 insertions(+)
+
+diff --git a/android/rule_builder.go b/android/rule_builder.go
+index 40d6fad..d3cb4ac 100644
+--- a/android/rule_builder.go
++++ b/android/rule_builder.go
+@@ -1460,6 +1460,10 @@ func (c *RuleBuilderCommand) PrebuiltBuildTool(ctx PathContext, tool string) *Ru
+ 		libDir := PathForSource(ctx, "prebuilts/build-tools", ctx.Config().PrebuiltOS(), "lib64")
+ 		c.ImplicitTool(libDir.Join(ctx, "libc_musl.so"))
+ 		c.ImplicitTool(libDir.Join(ctx, "libc++.so"))
++		if tool == "bison" {
++			// bison is a wrapper script around bison.real.
++			c.ImplicitTool(PathForSource(ctx, "prebuilts/build-tools", ctx.Config().PrebuiltOS(), "bin", "bison.real"))
++		}
+ 	}
+ 	return c
+ }
+diff --git a/cc/compiler.go b/cc/compiler.go
+index ef3488e..78915eb 100644
+--- a/cc/compiler.go
++++ b/cc/compiler.go
+@@ -420,6 +420,12 @@ func (compiler *baseCompiler) compilerFlags(ctx ModuleContext, flags Flags, deps
+ 
+ 	cflags := compiler.Properties.Cflags.GetOrDefault(ctx, nil)
+ 	cppflags := compiler.Properties.Cppflags.GetOrDefault(ctx, nil)
++	if ctx.Host() && ctx.Arch().ArchType == android.Arm64 {
++		// Some generated Android.bp files (e.g. cronet) give every host module
++		// x86-only options, which clang rejects for an aarch64 host.
++		cflags = filterX86OnlyFlags(cflags)
++		cppflags = filterX86OnlyFlags(cppflags)
++	}
+ 	vendorcflags := compiler.Properties.Target.Vendor.Cflags.GetOrDefault(ctx, nil)
+ 	productcflags := compiler.Properties.Target.Product.Cflags.GetOrDefault(ctx, nil)
+ 	CheckBadCompilerFlags(ctx, "cflags", cflags)
+@@ -907,3 +913,17 @@ type RustBindgenClangProperties struct {
+ 
+ 	//TODO(b/161141999) Add support for headers from cc_library_header modules.
+ }
++
++// filterX86OnlyFlags drops x86 target-feature options from a list of flags.
++func filterX86OnlyFlags(flags []string) []string {
++	var ret []string
++	for _, f := range flags {
++		switch f {
++		case "-msse", "-msse2", "-msse3", "-mssse3", "-msse4", "-msse4.1", "-msse4.2",
++			"-mavx", "-mavx2", "-mpclmul", "-maes", "-mfpmath=sse", "-m32", "-m64":
++			continue
++		}
++		ret = append(ret, f)
++	}
++	return ret
++}

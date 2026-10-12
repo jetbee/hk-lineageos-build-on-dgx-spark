@@ -1,0 +1,29 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: jetbee <7734987+jetbee@users.noreply.github.com>
+Date: Mon, 5 Oct 2026 02:57:39 +0000
+Subject: [PATCH] No source-built sysroot libraries on a native arm64 host
+
+The arm64 host uses the prebuilt std (its proc_macro goes with it); disable the
+musl_arm64 sysroot libraries that were built from source.
+
+Assisted-by: LLM
+---
+ Android.bp | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/Android.bp b/Android.bp
+index 7813b69..a8d57c2 100644
+--- a/Android.bp
++++ b/Android.bp
+@@ -108,7 +108,10 @@ rust_defaults {
+             enabled: false,
+         },
+         musl_arm64: {
+-            enabled: true,
++            // Upstream builds the sysroot from source for an arm64 *cross* host.
++            // On a native arm64 build host the prebuilt std (linux-arm64) is used
++            // instead, so these must stay off to avoid duplicate core/std crates.
++            enabled: false,
+         },
+         windows: {
+             enabled: true,

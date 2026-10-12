@@ -1,0 +1,52 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: jetbee <7734987+jetbee@users.noreply.github.com>
+Date: Sun, 4 Oct 2026 11:12:11 +0000
+Subject: [PATCH] Add arm64 host modules for javap and friends
+
+Declare the JDK 21 tools for the arm64 host so that the build finds them in linux-arm64.
+
+Assisted-by: LLM
+---
+ Android.bp | 27 +++++++++++++++++++++++++++
+ 1 file changed, 27 insertions(+)
+
+diff --git a/Android.bp b/Android.bp
+index a1e9799..ff1c41c 100644
+--- a/Android.bp
++++ b/Android.bp
+@@ -19,8 +19,35 @@ prebuilt_build_tool {
+         x86_64: {
+             enabled: true,
+         },
++        arm64: {
++            enabled: true,
++        },
+     },
+     target: {
++        musl_arm64: {
++            src: "linux-arm64/bin/javap",
++            deps: [
++                "linux-arm64/lib/libjli.so",
++                "linux-arm64/lib/jrt-fs.jar",
++                "linux-arm64/lib/jvm.cfg",
++                "linux-arm64/lib/server/libjvm.so",
++                "linux-arm64/lib/libverify.so",
++                "linux-arm64/lib/libjava.so",
++                "linux-arm64/lib/libzip.so",
++                "linux-arm64/lib/libjimage.so",
++                "linux-arm64/lib/modules",
++                "linux-arm64/lib/libnio.so",
++                "linux-arm64/lib/libnet.so",
++                "linux-arm64/lib/tzdb.dat",
++                "linux-arm64/lib/libawt.so",
++                "linux-arm64/lib/libawt_headless.so",
++                "linux-arm64/lib/libjavajpeg.so",
++                "linux-arm64/lib/liblcms.so",
++                "linux-arm64/lib/libmanagement.so",
++                "linux-arm64/lib/libmanagement_ext.so",
++                "linux-arm64/conf/security/java.security",
++            ],
++        },
+         linux: {
+             src: "linux-x86/bin/javap",
+             deps: [

@@ -1,0 +1,32 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: jetbee <7734987+jetbee@users.noreply.github.com>
+Date: Mon, 5 Oct 2026 02:57:39 +0000
+Subject: [PATCH] clangprebuilts: take the llvm build tools from the arm64 clang
+
+On an arm64 host the llvm tools run from a clang-*-arm64 directory next to the x86 one
+(created by scripts/place-arm64-prebuilts.sh).
+
+Assisted-by: LLM
+---
+ soong/clangprebuilts.go | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/soong/clangprebuilts.go b/soong/clangprebuilts.go
+index 4a7e3c7ad..9ef48469d 100644
+--- a/soong/clangprebuilts.go
++++ b/soong/clangprebuilts.go
+@@ -393,6 +393,14 @@ func llvmPrebuiltBuildTool(ctx android.LoadHookContext) {
+ 	deps := []string{
+ 		path.Join(clangDir, "lib", "x86_64-unknown-linux-gnu", "libc++.so"),
+ 	}
++	if ctx.Config().BuildArch == android.Arm64 {
++		// An arm64 build host cannot run the x86 tools in this directory; use the
++		// arm64 clang, linked next to this directory as <clang>-arm64. The tools
++		// are musl binaries that find libc_musl.so through $ORIGIN/../lib.
++		armDir := clangDir + "-arm64"
++		src = path.Join(armDir, "bin", name)
++		deps = []string{path.Join(armDir, "lib", "libc_musl.so")}
++	}
+ 
+ 	type props struct {
+ 		Enabled *bool

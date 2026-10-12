@@ -1,0 +1,73 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: jetbee <7734987+jetbee@users.noreply.github.com>
+Date: Mon, 5 Oct 2026 02:57:39 +0000
+Subject: [PATCH] Kernel host tools: use the machine libc, lz4 and pahole on aarch64
+
+The kernel-build-tools, the gcc sysroot and the lz4 under prebuilts/tools-lineage are
+x86 only. On an arm64 host, build the kernel's host tools against the machine's own libc
+(HOSTCFLAGS empty, HOSTLDFLAGS=-fuse-ld=lld) and take lz4 and pahole from PATH (lz4 is
+required; pahole is only passed on when it is installed).
+
+Assisted-by: LLM
+---
+ build/tasks/dt_image.mk     |  2 +-
+ config/BoardConfigKernel.mk | 15 +++++++++++++++
+ 2 files changed, 16 insertions(+), 1 deletion(-)
+
+diff --git a/build/tasks/dt_image.mk b/build/tasks/dt_image.mk
+index 2133417..4436587 100644
+--- a/build/tasks/dt_image.mk
++++ b/build/tasks/dt_image.mk
+@@ -42,7 +42,7 @@ endif
+ $(INSTALLED_DTIMAGE_TARGET): $(DTBTOOL) $(INSTALLED_KERNEL_TARGET)
+ 	$(build-dtimage-target)
+ ifeq ($(strip $(BOARD_KERNEL_LZ4C_DT)),true)
+-	prebuilts/tools-lineage/${HOST_OS}-x86/bin/lz4 -9 < $@ > $(LZ4_DT_IMAGE)
++	$(if $(filter arm64,$(HOST_ARCH)),lz4,prebuilts/tools-lineage/${HOST_OS}-x86/bin/lz4) -9 < $@ > $(LZ4_DT_IMAGE)
+ 	$(hide) $(ACP) $(LZ4_DT_IMAGE) $@
+ endif
+ 	@echo "Made DT image: $@"
+diff --git a/config/BoardConfigKernel.mk b/config/BoardConfigKernel.mk
+index fdf5688..9c9fcde 100644
+--- a/config/BoardConfigKernel.mk
++++ b/config/BoardConfigKernel.mk
+@@ -158,8 +158,15 @@ else
+     KERNEL_HOST_C_LD_FLAGS_SYSROOT := --sysroot=$(BUILD_TOP)/prebuilts/gcc/linux-x86/host/x86_64-linux-glibc2.17-4.8/sysroot
+ endif
+ 
++ifeq ($(HOST_ARCH),arm64)
++# The kernel-build-tools and the gcc sysroot are x86 only: build the kernel's
++# host tools against the build machine's own libc.
++KERNEL_MAKE_FLAGS += HOSTCFLAGS=""
++KERNEL_MAKE_FLAGS += HOSTLDFLAGS="-fuse-ld=lld"
++else
+ KERNEL_MAKE_FLAGS += HOSTCFLAGS="$(KERNEL_HOST_C_LD_FLAGS_SYSROOT) -I$(BUILD_TOP)/prebuilts/kernel-build-tools/linux-x86/include"
+ KERNEL_MAKE_FLAGS += HOSTLDFLAGS="$(KERNEL_HOST_C_LD_FLAGS_SYSROOT) -Wl,-rpath,$(BUILD_TOP)/prebuilts/kernel-build-tools/linux-x86/lib64 -L $(BUILD_TOP)/prebuilts/kernel-build-tools/linux-x86/lib64 -fuse-ld=lld --rtlib=compiler-rt"
++endif
+ 
+ TOOLS_PATH_OVERRIDE += PATH=$(BUILD_TOP)/prebuilts/tools-lineage/$(HOST_PREBUILT_TAG)/bin:$(BUILD_TOP)/prebuilts/build-tools/$(HOST_PREBUILT_TAG)/bin:$(TARGET_KERNEL_CLANG_PATH)/bin:$(BUILD_TOP)/prebuilts/rust-toolchain/$(HOST_PREBUILT_TAG)/$(TARGET_KERNEL_RUST_VERSION)/bin:$(BUILD_TOP)/prebuilts/clang-tools/$(HOST_PREBUILT_TAG)/bin:$$PATH
+ 
+@@ -184,7 +191,11 @@ KERNEL_MAKE_CMD := $(BUILD_TOP)/prebuilts/build-tools/$(HOST_PREBUILT_TAG)/bin/m
+ KERNEL_MAKE_FLAGS += LLVM=1 LLVM_IAS=1
+ 
+ # Pass prebuilt LZ4 path
++ifeq ($(HOST_ARCH),arm64)
++KERNEL_MAKE_FLAGS += LZ4=$(shell command -v lz4)
++else
+ KERNEL_MAKE_FLAGS += LZ4=$(BUILD_TOP)/prebuilts/kernel-build-tools/linux-x86/bin/lz4
++endif
+ 
+ # Since Linux 4.16, flex and bison are required
+ KERNEL_MAKE_FLAGS += LEX=$(BUILD_TOP)/prebuilts/build-tools/$(HOST_PREBUILT_TAG)/bin/flex
+@@ -193,7 +204,11 @@ KERNEL_MAKE_FLAGS += M4=$(BUILD_TOP)/prebuilts/build-tools/$(HOST_PREBUILT_TAG)/
+ TOOLS_PATH_OVERRIDE += BISON_PKGDATADIR=$(BUILD_TOP)/prebuilts/build-tools/common/bison
+ 
+ # Since Linux 5.10, pahole is required
++ifeq ($(HOST_ARCH),arm64)
++KERNEL_MAKE_FLAGS += PAHOLE=$(shell command -v pahole)
++else
+ KERNEL_MAKE_FLAGS += PAHOLE=$(BUILD_TOP)/prebuilts/kernel-build-tools/linux-x86/bin/pahole
++endif
+ 
+ # Tell rust bindgen which libclang to parse the kernel headers with
+ KERNEL_MAKE_FLAGS += LIBCLANG_PATH=$(TARGET_KERNEL_LIBCLANG_PATH)

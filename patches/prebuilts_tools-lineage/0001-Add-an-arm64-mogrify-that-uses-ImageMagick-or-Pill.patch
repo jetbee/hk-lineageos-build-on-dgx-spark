@@ -1,0 +1,95 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: jetbee <7734987+jetbee@users.noreply.github.com>
+Date: Mon, 5 Oct 2026 02:00:43 +0000
+Subject: [PATCH] Add an arm64 mogrify that uses ImageMagick or Pillow
+
+There is no arm64 mogrify in the tree. Add a small wrapper that calls the system
+ImageMagick (apt install imagemagick) when it is installed and falls back to Pillow
+for the resize operations the build uses, and declare it for the arm64 host.
+
+Assisted-by: LLM
+---
+ Android.bp              |  7 ++++++
+ linux-arm64/bin/mogrify | 53 +++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 60 insertions(+)
+ create mode 100755 linux-arm64/bin/mogrify
+
+diff --git a/Android.bp b/Android.bp
+index e4b0f2d..88725e9 100644
+--- a/Android.bp
++++ b/Android.bp
+@@ -24,8 +24,15 @@ prebuilt_build_tool {
+         x86_64: {
+             enabled: true,
+         },
++        arm64: {
++            enabled: true,
++        },
+     },
+     target: {
++        musl_arm64: {
++            // Python/Pillow stand-in for an aarch64 build host.
++            src: "linux-arm64/bin/mogrify",
++        },
+         linux: {
+             src: "linux-x86/bin/mogrify",
+         },
+diff --git a/linux-arm64/bin/mogrify b/linux-arm64/bin/mogrify
+new file mode 100755
+index 0000000..782053f
+--- /dev/null
++++ b/linux-arm64/bin/mogrify
+@@ -0,0 +1,53 @@
++#!/usr/bin/python3
++"""Minimal stand-in for ImageMagick's mogrify on an aarch64 build host.
++
++Only what vendor/lineage/bootanimation/gen-bootanimation.sh needs:
++  mogrify -resize WxH -colors N file...   (files are rewritten in place)
++Uses /usr/bin/mogrify instead when ImageMagick is installed.
++"""
++import os
++import sys
++
++if os.path.exists('/usr/bin/mogrify'):
++    os.execv('/usr/bin/mogrify', ['mogrify'] + sys.argv[1:])
++
++from PIL import Image
++
++
++def main(argv):
++    size = None
++    colors = None
++    files = []
++    i = 0
++    while i < len(argv):
++        a = argv[i]
++        if a == '-resize':
++            w, h = argv[i + 1].split('x')
++            size = (int(w), int(h))
++            i += 2
++        elif a == '-colors':
++            colors = int(argv[i + 1])
++            i += 2
++        elif a.startswith('-'):
++            sys.exit('mogrify stand-in: unsupported option ' + a)
++        else:
++            files.append(a)
++            i += 1
++    for f in files:
++        img = Image.open(f)
++        img.load()
++        if size:
++            scale = min(size[0] / img.width, size[1] / img.height)
++            new = (max(1, round(img.width * scale)), max(1, round(img.height * scale)))
++            if img.mode == 'P':
++                img = img.convert('RGBA')
++            img = img.resize(new, Image.LANCZOS)
++        if colors:
++            if img.mode not in ('RGB', 'RGBA'):
++                img = img.convert('RGBA')
++            method = Image.FASTOCTREE if img.mode == 'RGBA' else Image.MEDIANCUT
++            img = img.quantize(colors, method=method)
++        img.save(f, 'PNG')
++
++
++main(sys.argv[1:])

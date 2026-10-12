@@ -1,0 +1,31 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: jetbee <7734987+jetbee@users.noreply.github.com>
+Date: Mon, 5 Oct 2026 02:57:39 +0000
+Subject: [PATCH] aarch64-paging: enable the arm64 variant for the device only
+
+The crate selected its arm64 sources with `arch: arm64`, which also switches them on for
+an arm64 build host, where there is no source-built sysroot. Use `target: android_arm64`
+so that only the device variant is affected.
+
+Assisted-by: LLM
+---
+ crates/aarch64-paging/Android.bp | 6 ++++--
+ 1 file changed, 4 insertions(+), 2 deletions(-)
+
+diff --git a/crates/aarch64-paging/Android.bp b/crates/aarch64-paging/Android.bp
+index 208c2de7..fd06c49b 100644
+--- a/crates/aarch64-paging/Android.bp
++++ b/crates/aarch64-paging/Android.bp
+@@ -72,8 +72,10 @@ rust_library_rlib {
+     vendor_available: true,
+     min_sdk_version: "29",
+     enabled: false,
+-    arch: {
+-        arm64: {
++    target: {
++        // Device only: "arch: arm64" would also enable the variant on an arm64
++        // build host, which has no source-built sysroot.
++        android_arm64: {
+             enabled: true,
+         },
+     },

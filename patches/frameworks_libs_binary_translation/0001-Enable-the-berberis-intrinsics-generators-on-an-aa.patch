@@ -1,0 +1,66 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: jetbee <7734987+jetbee@users.noreply.github.com>
+Date: Sun, 4 Oct 2026 11:12:11 +0000
+Subject: [PATCH] Enable the berberis intrinsics generators on an aarch64 host
+
+Add berberis_enable_arm64_host_defaults to the host-side generator modules in
+cpu_emulation/intrinsics so that the build graph resolves on an arm64 host. The x86
+emulator itself is not built there.
+
+Assisted-by: LLM
+---
+ cpu_emulation/intrinsics/Android.bp | 20 ++++++++++++++++----
+ 1 file changed, 16 insertions(+), 4 deletions(-)
+
+diff --git a/cpu_emulation/intrinsics/Android.bp b/cpu_emulation/intrinsics/Android.bp
+index dff85f6..f6f938c 100644
+--- a/cpu_emulation/intrinsics/Android.bp
++++ b/cpu_emulation/intrinsics/Android.bp
+@@ -245,7 +245,10 @@ genrule {
+ 
+ cc_binary_host {
+     name: "gen_riscv64_to_x86_64_intrinsics",
+-    defaults: ["gen_text_asm_intrinsics_defaults"],
++    defaults: [
++        "berberis_enable_arm64_host_defaults",
++        "gen_text_asm_intrinsics_defaults",
++    ],
+     local_include_dirs: ["riscv64_to_x86_64"],
+     target: {
+         linux: {
+@@ -423,7 +426,10 @@ cc_library_headers {
+ 
+ cc_library_headers {
+     name: "libberberis_macro_assembler_headers_all_to_x86_64",
+-    defaults: ["berberis_guest_agnostic_defaults_64"],
++    defaults: [
++        "berberis_enable_arm64_host_defaults",
++        "berberis_guest_agnostic_defaults_64",
++    ],
+     host_supported: true,
+     export_include_dirs: [
+         "all_to_x86_32_or_x86_64/include",
+@@ -441,7 +447,10 @@ cc_library_headers {
+ 
+ cc_library_headers {
+     name: "libberberis_macro_assembler_headers_riscv64_to_x86_64",
+-    defaults: ["berberis_riscv64_defaults"],
++    defaults: [
++        "berberis_enable_arm64_host_defaults",
++        "berberis_riscv64_defaults",
++    ],
+     host_supported: true,
+     export_include_dirs: [
+         "riscv64_to_all/include",
+@@ -463,7 +472,10 @@ cc_library_headers {
+ 
+ cc_library_static {
+     name: "libberberis_macro_assembler_riscv64_to_x86_64",
+-    defaults: ["berberis_riscv64_defaults"],
++    defaults: [
++        "berberis_enable_arm64_host_defaults",
++        "berberis_riscv64_defaults",
++    ],
+     host_supported: true,
+     srcs: ["riscv64_to_x86_64/constants_pool.cc"],
+     header_libs: [

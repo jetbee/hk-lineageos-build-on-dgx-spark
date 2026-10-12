@@ -1,0 +1,140 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: jetbee <7734987+jetbee@users.noreply.github.com>
+Date: Sun, 4 Oct 2026 11:12:11 +0000
+Subject: [PATCH 1/3] Support an aarch64 Linux build host
+
+Soong already runs on linux/arm64 (as linux_musl-arm64); the pieces below were still
+x86-only.
+
+- rust: use the aarch64-unknown-linux-musl std for the arm64 host, skip the
+  linux-musl-x86 branch there, and set RUSTC_BOOTSTRAP=1 (the upstream stable rustc
+  rejects the -Z options Android's toolchain accepts).
+- genrule: an arm64 host has no second (32-bit) host arch, so host_second_srcs are
+  not an error.
+- android/paths.go: install Common-arch host modules into the arm64 host directory.
+- android/rule_builder.go, cc/gen.go: the arm64 build-tools (bison, m4, ...) are linked
+  against musl and find the loader and libc++ relative to the tool; copy them into the
+  sbox sandbox next to it.
+
+Assisted-by: LLM
+---
+ android/paths.go          |  4 ++++
+ android/rule_builder.go   | 11 ++++++++++-
+ cc/gen.go                 |  7 +++++++
+ genrule/genrule.go        |  5 +++++
+ rust/builder.go           |  5 +++++
+ rust/toolchain_library.go |  5 ++++-
+ 6 files changed, 35 insertions(+), 2 deletions(-)
+
+diff --git a/android/paths.go b/android/paths.go
+index 12d15ad..e378e5b 100644
+--- a/android/paths.go
++++ b/android/paths.go
+@@ -2094,6 +2094,10 @@ func pathForInstall(ctx PathContext, os OsType, arch ArchType, partition string,
+ 		archName := arch.String()
+ 		if os.Class == Host && (arch == X86_64 || arch == Common) {
+ 			archName = "x86"
++			if ctx.Config().BuildArch == Arm64 {
++				// Common (e.g. Java) modules share the arm64 host tools' directory.
++				archName = "arm64"
++			}
+ 		}
+ 		partitionPaths = []string{"host", osName + "-" + archName, partition}
+ 	}
+diff --git a/android/rule_builder.go b/android/rule_builder.go
+index fec46ca..894b7a3 100644
+--- a/android/rule_builder.go
++++ b/android/rule_builder.go
+@@ -1452,7 +1452,16 @@ func (c *RuleBuilderCommand) builtToolWithoutDeps(tool string) *RuleBuilderComma
+ //
+ //	cmd.Tool(ctx.Config().PrebuiltBuildTool(ctx, tool))
+ func (c *RuleBuilderCommand) PrebuiltBuildTool(ctx PathContext, tool string) *RuleBuilderCommand {
+-	return c.Tool(ctx.Config().PrebuiltBuildTool(ctx, tool))
++	c.Tool(ctx.Config().PrebuiltBuildTool(ctx, tool))
++	if ctx.Config().BuildArch == Arm64 {
++		// The arm64 build-tools are dynamically linked against musl and find the
++		// loader and libc++ through an rpath relative to the tool, so they have to
++		// be copied into the sandbox next to it.
++		libDir := PathForSource(ctx, "prebuilts/build-tools", ctx.Config().PrebuiltOS(), "lib64")
++		c.ImplicitTool(libDir.Join(ctx, "libc_musl.so"))
++		c.ImplicitTool(libDir.Join(ctx, "libc++.so"))
++	}
++	return c
+ }
+ 
+ // Input adds the specified input path to the command line.  The path will also be added to the dependencies returned by
+diff --git a/cc/gen.go b/cc/gen.go
+index a5c9a4a..1618a22 100644
+--- a/cc/gen.go
++++ b/cc/gen.go
+@@ -107,6 +107,13 @@ func genYacc(ctx android.ModuleContext, rule *android.RuleBuilder, yaccFile andr
+ 		Flag("-o").Output(outFile).Input(yaccFile).
+ 		Implicits(ctx.GlobFilesOutsideModuleDir("prebuilts/build-tools/common/bison/**/*", nil))
+ 
++	if ctx.Config().BuildArch == android.Arm64 {
++		// m4 is run from its in-tree path, where it looks for the musl loader.
++		libDir := android.PathForSource(ctx, "prebuilts/build-tools", ctx.Config().PrebuiltOS(), "lib64")
++		cmd.Implicit(libDir.Join(ctx, "libc_musl.so"))
++		cmd.Implicit(libDir.Join(ctx, "libc++.so"))
++	}
++
+ 	return ret
+ }
+ 
+diff --git a/genrule/genrule.go b/genrule/genrule.go
+index 000e2d2..694c9fd 100644
+--- a/genrule/genrule.go
++++ b/genrule/genrule.go
+@@ -496,6 +496,11 @@ func (g *Module) generateCommonBuildActions(ctx android.ModuleContext) {
+ 				Context: ctx, Paths: []string{in}, ExcludePaths: exclude, IncludeDirs: includeDirInPaths,
+ 			})
+ 			if len(missingDeps) > 0 {
++				if propName == "host_second_src" && ctx.Config().BuildArch == android.Arm64 {
++					// An arm64 host has no second (32-bit) host arch, so the
++					// dependency was intentionally never added.
++					continue
++				}
+ 				if !ctx.Config().AllowMissingDependencies() {
+ 					panic(fmt.Errorf("should never get here, the missing dependencies %q should have been reported in DepsMutator",
+ 						missingDeps))
+diff --git a/rust/builder.go b/rust/builder.go
+index 54a5ca9..ef62b4f 100644
+--- a/rust/builder.go
++++ b/rust/builder.go
+@@ -329,6 +329,11 @@ func rustEnvVars(ctx android.ModuleContext, deps PathDeps, crateName string, car
+ 		envVars["SOONG_RUST_GEN_DIR"] = moduleGenDir.String()
+ 	}
+ 	envVars["ANDROID_RUST_VERSION"] = config.GetRustVersion(ctx)
++	if ctx.Config().BuildArch == android.Arm64 {
++		// The upstream rust-lang aarch64 toolchain is a stable build, while
++		// Android's x86 toolchain accepts unstable (-Z) options.
++		envVars["RUSTC_BOOTSTRAP"] = "1"
++	}
+ 
+ 	if rustMod, ok := ctx.Module().(*Module); ok && rustMod.compiler.cargoEnvCompat() {
+ 		// We only emulate cargo environment variables for 3p code, which is only ever built
+diff --git a/rust/toolchain_library.go b/rust/toolchain_library.go
+index b78d538..1b700c5 100644
+--- a/rust/toolchain_library.go
++++ b/rust/toolchain_library.go
+@@ -153,6 +153,7 @@ type hostPrebuiltProps struct {
+ 		Linux_glibc_x86    hostPrebuiltTargetProps
+ 		Linux_musl_x86_64  hostPrebuiltTargetProps
+ 		Linux_musl_x86     hostPrebuiltTargetProps
++		Linux_musl_arm64   hostPrebuiltTargetProps
+ 		Darwin_x86_64      hostPrebuiltTargetProps
+ 	}
+ }
+@@ -176,9 +177,11 @@ func constructLibProps(rlib, solib bool) func(ctx android.LoadHookContext) {
+ 		if platform == "linux-x86" && ctx.Config().BuildOS == android.Linux {
+ 			p.Target.Linux_glibc_x86_64.addPrebuiltToTarget(ctx, name, rustDir, "linux-x86", "x86_64-unknown-linux-gnu", rlib, solib)
+ 			p.Target.Linux_glibc_x86.addPrebuiltToTarget(ctx, name, rustDir, "linux-x86", "i686-unknown-linux-gnu", rlib, solib)
+-		} else if platform == "linux-musl-x86" && ctx.Config().BuildOS == android.LinuxMusl {
++		} else if platform == "linux-musl-x86" && ctx.Config().BuildOS == android.LinuxMusl && ctx.Config().BuildArch != android.Arm64 {
+ 			p.Target.Linux_musl_x86_64.addPrebuiltToTarget(ctx, name, rustDir, "linux-musl-x86", "x86_64-unknown-linux-musl", rlib, solib)
+ 			p.Target.Linux_musl_x86.addPrebuiltToTarget(ctx, name, rustDir, "linux-musl-x86", "i686-unknown-linux-musl", rlib, solib)
++		} else if platform == "linux-arm64" && ctx.Config().BuildOS == android.LinuxMusl {
++			p.Target.Linux_musl_arm64.addPrebuiltToTarget(ctx, name, rustDir, "linux-arm64", "aarch64-unknown-linux-musl", rlib, solib)
+ 		} else if platform == "darwin" && ctx.Config().BuildOS == android.Darwin {
+ 			p.Target.Darwin_x86_64.addPrebuiltToTarget(ctx, name, rustDir, "darwin-x86", "x86_64-apple-darwin", rlib, solib)
+ 		} else {

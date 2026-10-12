@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: jetbee <7734987+jetbee@users.noreply.github.com>
+Date: Mon, 5 Oct 2026 02:57:39 +0000
+Subject: [PATCH] no_std: use the prebuilt std for musl_arm64
+
+Use the prebuilt std for the arm64 host; it needs the matching proc_macro from the same sysroot.
+
+Assisted-by: LLM
+---
+ no_std/Android.bp | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/no_std/Android.bp b/no_std/Android.bp
+index 37b92cf..1b4422e 100644
+--- a/no_std/Android.bp
++++ b/no_std/Android.bp
+@@ -31,8 +31,10 @@ cc_defaults {
+             ],
+         },
+         musl_arm64: {
++            // Native arm64 build host: the prebuilt std (with its matching
++            // proc_macro) is used, like on the other build hosts.
+             whole_static_libs: [
+-                "libstd",
++                "prebuilt_libstd",
+             ],
+         },
+         darwin_arm64: {

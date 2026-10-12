@@ -1,0 +1,69 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: jetbee <7734987+jetbee@users.noreply.github.com>
+Date: Mon, 5 Oct 2026 01:41:43 +0000
+Subject: [PATCH] sepolicy tools: keep getopt() results in an int
+
+On aarch64 Linux plain char is unsigned, so `char c = getopt(...)` never becomes -1
+and the option loops of checkfc, sepolicy-check and sepolicy-analyze do not end. Use
+int, as the C library declares it.
+
+Assisted-by: LLM
+---
+ tools/checkfc.c                     | 2 +-
+ tools/sepolicy-analyze/attribute.c  | 2 +-
+ tools/sepolicy-analyze/neverallow.c | 2 +-
+ tools/sepolicy-check.c              | 2 +-
+ 4 files changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/tools/checkfc.c b/tools/checkfc.c
+index c89c7cb..ca4a3dd 100644
+--- a/tools/checkfc.c
++++ b/tools/checkfc.c
+@@ -444,7 +444,7 @@ int main(int argc, char **argv)
+   bool allow_empty = false;
+   bool compare = false;
+   bool test_data = false;
+-  char c;
++  int c;  // getopt() returns int; plain char is unsigned on arm64
+ 
+   filemode mode = filemode_file_contexts;
+ 
+diff --git a/tools/sepolicy-analyze/attribute.c b/tools/sepolicy-analyze/attribute.c
+index f7c9b4c..554f8b1 100644
+--- a/tools/sepolicy-analyze/attribute.c
++++ b/tools/sepolicy-analyze/attribute.c
+@@ -75,7 +75,7 @@ int attribute_func (int argc, char **argv, policydb_t *policydb) {
+     int rc = -1;
+     int list = 0;
+     int reverse = 0;
+-    char ch;
++    int ch;
+ 
+     struct option attribute_options[] = {
+         {"list", no_argument, NULL, 'l'},
+diff --git a/tools/sepolicy-analyze/neverallow.c b/tools/sepolicy-analyze/neverallow.c
+index 4b88206..6653f8d 100644
+--- a/tools/sepolicy-analyze/neverallow.c
++++ b/tools/sepolicy-analyze/neverallow.c
+@@ -493,7 +493,7 @@ static int check_neverallows_string(policydb_t *policydb, char *string, size_t l
+ 
+ int neverallow_func (int argc, char **argv, policydb_t *policydb) {
+     char *rules = 0, *file = 0;
+-    char ch;
++    int ch;
+ 
+     struct option neverallow_options[] = {
+         {"debug", no_argument, NULL, 'd'},
+diff --git a/tools/sepolicy-check.c b/tools/sepolicy-check.c
+index 713e7c1..3102548 100644
+--- a/tools/sepolicy-check.c
++++ b/tools/sepolicy-check.c
+@@ -236,7 +236,7 @@ int main(int argc, char **argv)
+ 	policydb_t policydb;
+ 	struct policy_file pf;
+ 	sidtab_t sidtab;
+-	char ch;
++	int ch;
+ 	int match = 1;
+ 
+ 	struct option long_options[] = {

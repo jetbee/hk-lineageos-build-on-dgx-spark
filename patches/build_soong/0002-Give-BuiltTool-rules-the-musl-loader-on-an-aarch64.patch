@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: jetbee <7734987+jetbee@users.noreply.github.com>
+Date: Sun, 4 Oct 2026 11:29:55 +0000
+Subject: [PATCH 2/3] Give BuiltTool rules the musl loader on an aarch64 host
+
+On an arm64 host every host tool is musl-linked, so BuiltTool must always carry the
+musl loader and libc++ into the sandbox, not only when UseHostMusl() is set.
+
+Assisted-by: LLM
+---
+ android/rule_builder.go | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/android/rule_builder.go b/android/rule_builder.go
+index 894b7a3..40d6fad 100644
+--- a/android/rule_builder.go
++++ b/android/rule_builder.go
+@@ -1412,8 +1412,8 @@ func (c *RuleBuilderCommand) getHostToolRuntimeDeps(tool string) Paths {
+ //
+ //	cmd.Tool(ctx.Config().HostToolPath(ctx, tool))
+ func (c *RuleBuilderCommand) BuiltTool(tool string) *RuleBuilderCommand {
+-	if c.rule.ctx.Config().UseHostMusl() {
+-		// If the host is using musl, assume that the tool was built against musl libc and include
++	if c.rule.ctx.Config().UseHostMusl() || c.rule.ctx.Config().BuildArch == Arm64 {
++		// If the host is using musl (arm64 hosts always do), assume that the tool was built against musl libc and include
+ 		// libc_musl.so in the sandbox.
+ 		// TODO(ccross): if we supported adding new dependencies during GenerateAndroidBuildActions
+ 		// this could be a dependency + TransitivePackagingSpecs.
